@@ -10,6 +10,7 @@
 #define MSA_REG_ACC_Y_MSB               0x05
 #define MSA_REG_ACC_Z_LSB               0x06
 #define MSA_REG_ACC_Z_MSB               0x07
+#define MSA_REG_ORIENTA_STA             0x0C
 
 #define MSA_REG_MOTION_FLAG             0x09
 #define MSA_REG_G_RANGE                 0x0f
@@ -43,6 +44,7 @@
 #define MSA_REG_FINE_OFFSET_TRIM_Z      0x88
 #define MSA_REG_SENS_COMP               0x8c
 #define MSA_REG_SENS_COARSE_TRIM        0xd1
+static void Msa30x_Getdirection(MSA30X_BASE*base,uint8_t *uplook,uint8_t *dir);
 
 void MSA30x_Init(MSA30X_BASE*base,
             MEASURING_RANGE measuring_range,
@@ -58,9 +60,12 @@ void MSA30x_Init(MSA30X_BASE*base,
     base->power_mode = power_mode;
     base->outdata_formate = outdata_formate;
 
-
     base->read = read;
     base->write = write;
+
+    base->X_axis = 0;
+    base->Y_axis = 0;
+    base->Z_axis = 0;
 
     switch(outdata_formate){
         case BIT_14:
@@ -76,18 +81,26 @@ void MSA30x_Init(MSA30X_BASE*base,
             temp |= 0x0c;
         break;
     }
+
+
+
+
     switch(measuring_range){
         case POSNEG_2G:
             temp |= 0x00;
+            base->Resolution = 0.000244140625;
         break;
         case POSNEG_4G:
             temp |= 0x01;
+            base->Resolution = 0.00048828125;
         break;
         case POSNEG_8G:
             temp |= 0x02;
+            base->Resolution = 0.0009765625;
         break;
         case POSNEG_16G:
             temp |= 0x03;
+            base->Resolution = 0.001953125;
         break;
     }
     base->write(MSA_REG_G_RANGE,temp);//控制采集精度和测量范围
@@ -217,38 +230,45 @@ void MSA30x_InteruptCfig(MSA30X_BASE*base,
 *    函 数 名: void MSA30X_ReadXYZ(MSA30X_BASE *base,uint16_t X_axis,uint16_t Y_axis,uint16_t Z_axis)
 *    功能说明: 读取XYZ轴的加速度值
 *    传    参: 
-        @X_axis:X轴数据指针，16位，
-        @Y_axis:Y轴数据指针，16位，
-        @Z_axis:Z轴数据指针，16位，
+        @X_axis:X轴数据指针，单位G(m/s^2)
+        @Y_axis:Y轴数据指针，单位G(m/s^2)
+        @Z_axis:Z轴数据指针，单位G(m/s^2)
 *    返 回 值: 
 *   说    明: 
 *********************************************************************************************************/
-void MSA30X_ReadXYZ(MSA30X_BASE *base,uint16_t* X_axis,uint16_t* Y_axis,uint16_t* Z_axis){
+void MSA30X_ReadXYZ(MSA30X_BASE *base,float* X_axis,float* Y_axis,float* Z_axis){
     uint8_t temp[6];
-    
+    uint8_t uplook = 0;
+    uint8_t right = 0;
+
+    static uint8_t init =0;
+
+
     base->read(MSA_REG_ACC_X_LSB,temp,6);
-    switch(base->outdata_formate){
-        case BIT_14:
-            *X_axis = 0x3FFF&(temp[0]+((uint16_t)temp[1])<<8);
-            *Y_axis = 0x3FFF&(temp[2]+((uint16_t)temp[3])<<8);
-            *Z_axis = 0x3FFF&(temp[4]+((uint16_t)temp[5])<<8);
-        break;
-        case BIT_12:
-            *X_axis = 0xFFF&(temp[0]+((uint16_t)temp[1])<<8);
-            *Y_axis = 0xFFF&(temp[2]+((uint16_t)temp[3])<<8);
-            *Z_axis = 0xFFF&(temp[4]+((uint16_t)temp[5])<<8);
-        break;
-        case BIT_10:
-            *X_axis = 0x3FF&(temp[0]+((uint16_t)temp[1])<<8);
-            *Y_axis = 0x3FF&(temp[2]+((uint16_t)temp[3])<<8);
-            *Z_axis = 0x3FF&(temp[4]+((uint16_t)temp[5])<<8);
-        break;
-        case BIT_8:
-            *X_axis = 0xff&(temp[0]+((uint16_t)temp[1])<<8);
-            *Y_axis = 0xff&(temp[2]+((uint16_t)temp[3])<<8);
-            *Z_axis = 0xff&(temp[4]+((uint16_t)temp[5])<<8);
-        break;
-    }
+
+    Msa30x_Getdirection(base,&uplook,&right);
+    base->X_axis = ((temp[1]&0x7f) << 6 | temp[0]>>2);
+    base->Y_axis = ((temp[3]&0x7f) << 6 | temp[2]>>2);
+    base->Z_axis = ((temp[5]&0x7f) << 6 | temp[4]>>2);
+
+
+    base->X_axis_temp = temp[1] *256 + temp[0];
+    base->Y_axis_temp = temp[3] *256 + temp[2];
+    base->Z_axis_temp = temp[5] *256 + temp[4];
+
+    // if(0 == init){
+    //     init = 1;
+    //     base->write(MSA_REG_CUSTOM_OFFSET_X,base->X_axis);
+    //     base->write(MSA_REG_CUSTOM_OFFSET_Y,base->Y_axis);
+    //     base->write(MSA_REG_CUSTOM_OFFSET_Z,base->Z_axis);
+    // }
+    // base->X_axis &= base->outdata_formate;
+    // base->Y_axis &= base->outdata_formate;
+    // base->Z_axis &= base->outdata_formate;
+
+    * X_axis = base->Resolution*(base->X_axis) * ((0x80&temp[1])?-1:1);
+    * Y_axis = base->Resolution*(base->Y_axis) * ((0x80&temp[3])?-1:1);
+    * Z_axis = base->Resolution*(base->Z_axis) * ((0x80&temp[5])?-1:1);
 }
 /**********************************************************************************************************
 *    函 数 名: uint8_t MSA30x_Test(MSA30X_BASE*base)
@@ -265,3 +285,28 @@ uint8_t MSA30x_Test(MSA30X_BASE*base){
     }
     return 0;
 }
+/**********************************************************************************************************
+*    函 数 名: static void Msa30x_Getdirection(MSA30X_BASE*base,uint8_t *uplook,uint8_t *dir)
+*    功能说明: 得到传感器方向
+*    传    参: 
+        @uplook：器件朝向 0:upward looking, 1:downward looking
+        @dir：器件方向
+            0x00: portrait upright
+            0x01: portrait upsidedown
+            0x02: landscape left,
+            0x03: landscape right        
+*    返 回 值: 
+*   说    明: 
+*********************************************************************************************************/
+static void Msa30x_Getdirection(MSA30X_BASE*base,uint8_t *uplook,uint8_t *dir){
+    uint8_t temp[1];
+    base->read(MSA_REG_ORIENTA_STA,temp,1);
+    if(temp[0]){
+        temp[0]++;
+    }
+    *uplook = (temp[0]&0x40)>>6;
+    *dir = (temp[0]&0x30)>>5;
+}
+// void Msa30x_SetOffset(){
+
+// }
