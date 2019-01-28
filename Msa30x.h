@@ -20,13 +20,10 @@ typedef struct
     OUTDATA_FORMATE outdata_formate;//输出数据有效位数
     double Resolution;//分辨率
 
-    uint16_t X_axis;
-    uint16_t Y_axis;
-    uint16_t Z_axis;
+    int16_t X_axis;
+    int16_t Y_axis;
+    int16_t Z_axis;
 
-    uint16_t X_axis_temp;
-    uint16_t Y_axis_temp;
-    uint16_t Z_axis_temp;
 /**********************************************************************************************************
 *    函 数 名: int (*read)(uint8_t* buf,uint8_t len);
 *    功能说明: 可以从设备中读取数据的函数指针
@@ -64,6 +61,6 @@ void MSA30x_InteruptCfig(MSA30X_BASE*base,
 void MSA30X_ReadXYZ(MSA30X_BASE *base,float* X_axis,float* Y_axis,float* Z_axis);
 
 uint8_t MSA30x_Test(MSA30X_BASE*base);
-
+void MSA30x_InterFreefallCfig(MSA30X_BASE*base,uint8_t Decimeter);
 #endif
        

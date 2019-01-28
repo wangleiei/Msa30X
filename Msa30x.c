@@ -82,9 +82,6 @@ void MSA30x_Init(MSA30X_BASE*base,
         break;
     }
 
-
-
-
     switch(measuring_range){
         case POSNEG_2G:
             temp |= 0x00;
@@ -183,13 +180,13 @@ void MSA30x_EnterSleepMode(MSA30X_BASE*base,uint32_t Bandwidth_HZ){
     base->write(MSA_REG_POWERMODE_BW,temp);//工作模式和低功耗下的带宽
 }
 /**********************************************************************************************************
-*    函 数 名: void MSA30x_InteruptCfig(MSA30X_BASE*base,INTERPIN_OUTMODE mode,INTERPIN_ACTIVE_LEVEL level,INTERBIT_LATCHTIME times)
+*    函 数 名: void MSA30x_InteruptPinCfig(MSA30X_BASE*base,INTERPIN_OUTMODE mode,INTERPIN_ACTIVE_LEVEL level,INTERBIT_LATCHTIME times)
 *    功能说明: 配置中断管脚，输出模式，输出电平，以及寄存器中中断bit保持时间
 *    传    参: 
 *    返 回 值: 
 *   说    明: 
 *********************************************************************************************************/
-void MSA30x_InteruptCfig(MSA30X_BASE*base,
+void MSA30x_InteruptPinCfig(MSA30X_BASE*base,
                         INTERPIN_OUTMODE mode,
                         INTERPIN_ACTIVE_LEVEL level,
                         INTERBIT_LATCHTIME times){
@@ -241,34 +238,19 @@ void MSA30X_ReadXYZ(MSA30X_BASE *base,float* X_axis,float* Y_axis,float* Z_axis)
     uint8_t uplook = 0;
     uint8_t right = 0;
 
-    static uint8_t init =0;
-
 
     base->read(MSA_REG_ACC_X_LSB,temp,6);
 
     Msa30x_Getdirection(base,&uplook,&right);
-    base->X_axis = ((temp[1]&0x7f) << 6 | temp[0]>>2);
-    base->Y_axis = ((temp[3]&0x7f) << 6 | temp[2]>>2);
-    base->Z_axis = ((temp[5]&0x7f) << 6 | temp[4]>>2);
+
+    base->X_axis = (temp[1] << 8 | temp[0])>>2;
+    base->Y_axis = (temp[3] << 8 | temp[2])>>2;
+    base->Z_axis = (temp[5] << 8 | temp[4])>>2;
 
 
-    base->X_axis_temp = temp[1] *256 + temp[0];
-    base->Y_axis_temp = temp[3] *256 + temp[2];
-    base->Z_axis_temp = temp[5] *256 + temp[4];
-
-    // if(0 == init){
-    //     init = 1;
-    //     base->write(MSA_REG_CUSTOM_OFFSET_X,base->X_axis);
-    //     base->write(MSA_REG_CUSTOM_OFFSET_Y,base->Y_axis);
-    //     base->write(MSA_REG_CUSTOM_OFFSET_Z,base->Z_axis);
-    // }
-    // base->X_axis &= base->outdata_formate;
-    // base->Y_axis &= base->outdata_formate;
-    // base->Z_axis &= base->outdata_formate;
-
-    * X_axis = base->Resolution*(base->X_axis) * ((0x80&temp[1])?-1:1);
-    * Y_axis = base->Resolution*(base->Y_axis) * ((0x80&temp[3])?-1:1);
-    * Z_axis = base->Resolution*(base->Z_axis) * ((0x80&temp[5])?-1:1);
+    * X_axis = base->Resolution*(base->X_axis);// * ((0x80&temp[1])?-1:1);
+    * Y_axis = base->Resolution*(base->Y_axis);// * ((0x80&temp[3])?-1:1);
+    * Z_axis = base->Resolution*(base->Z_axis);// * ((0x80&temp[5])?-1:1);
 }
 /**********************************************************************************************************
 *    函 数 名: uint8_t MSA30x_Test(MSA30X_BASE*base)
@@ -308,5 +290,43 @@ static void Msa30x_Getdirection(MSA30X_BASE*base,uint8_t *uplook,uint8_t *dir){
     *dir = (temp[0]&0x30)>>5;
 }
 // void Msa30x_SetOffset(){
-
 // }
+// 校准没弄，
+/**********************************************************************************************************
+*    函 数 名: void MSA30x_InterFreefallCfig(MSA30X_BASE*base,uint8_t Decimeter)
+*    功能说明: 配置物体的自由落体运动时的中断，
+*    传    参: @Meter:分米，物体从Meter米下跌落时，产生中断,取值范围 2,4,8,12
+*    返 回 值: 
+*   说    明: 器件的跌落中断发生在 实际值加速度值小于阈值后一段时间，消失于实际加速度大于阈值时,呵呵，过度设计
+*********************************************************************************************************/
+void MSA30x_InterFreefallCfig(MSA30X_BASE*base,uint8_t Decimeter){
+    // 启动跌落中断
+    uint8_t temp[1];
+    base->read(MSA_REG_INTERRUPT_SETTINGS2,temp,1);
+    temp[0] |= 0x08;
+    base->write(MSA_REG_INTERRUPT_SETTINGS2,temp[0]);
+
+    // 选择成xyz轴之和检测
+    base->write(MSA_REG_FREEFALL_HY,0X04);
+
+    // 设置阈值
+    base->write(MSA_REG_FREEFALL_TH,0X30);//375mg
+
+    // 设置最长跌落时间
+    switch(Decimeter){
+        case 2://0.2s
+            temp[0] = 200/2-1;
+        break;
+        case 4://0.3s
+            temp[0] = 300/2-1;
+        break;
+        case 8://0.4s
+            temp[0] = 400/2-1;
+        break;
+        case 12://0.5s
+            temp[0] = 500/2-1;
+        break;
+    }
+    base->write(MSA_REG_FREEFALL_DUR,temp[0]);
+}
+
